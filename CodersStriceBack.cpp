@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#define PI 3.14159265
 const int map_width = 16000;
 const int map_height = 9000;
 
@@ -16,28 +17,47 @@ using namespace std;
 struct Vec2
 {
     Vec2(float _x, float _y) : x(_x), y(_y) {}
-    Vec2(int _x, int _y)
-    {
-        x = (float)_x;
-        y = (float)_y;
+
+    Vec2 operator+=(const float v)
+    { x += v; y += v; return *this; }
+
+    Vec2& operator+=(const Vec2& v)
+    { x += v.x;  y += v.y; return *this; }
+
+    Vec2& operator-=(const Vec2& v)
+    { x -= v.x;  y -= v.y; return *this; }
+
+    Vec2& operator*=(const float v)
+    { x *= v; y *= v; return *this; }
+
+    Vec2& operator*=(const Vec2& v)
+    { x *= v.x;  y *= v.y; return *this; }
+
+    Vec2 operator*(const Vec2& v) const
+    { return Vec2(x*v.x, y*v.y); }
+
+    Vec2 operator*(const float v) const
+    { return Vec2(x*v, y*v); }
+
+    Vec2& operator/=(const float v) {
+        float r = 1.0f / v;
+        *this *= r;
+        return *this;
+    }
+
+    Vec2 operator-(Vec2& v)
+    { x -= v.x; y -= v.y; return *this; }
+
+    friend Vec2 operator*(const float v, const Vec2& vec )
+    { return vec * v; }
+
+    Vec2 operator/(const float v) const {
+        float r = 1.0f / v;
+        return *this * r;
     }
 
     float x = 0;
     float y = 0;
-
-    Vec2 operator*=(float&& value)
-    {
-        x *= value;
-        y *= value;
-        return *this;
-    }
-
-    Vec2 operator+=(float&& value)
-    {
-        x += value;
-        y += value;
-        return *this;
-    }
 };
 
 Vec2 normalize(Vec2& vec)
@@ -52,11 +72,7 @@ Vec2 normalize(Vec2&& vec)
     return { vec.x/length, vec.y/length };
 }
 
-float dot_product(Vec2& player, Vec2& enemy) {
-   return player.x * enemy.x + player.y* enemy.y;
-}
-
-float dot_product(Vec2&& player, Vec2&& enemy) {
+float dot_product(const Vec2& player, const Vec2& enemy) {
    return player.x * enemy.x + player.y* enemy.y;
 }
 
@@ -65,11 +81,29 @@ int distance(int x0, int y0, int x1, int y1)
     return sqrt((x1 - x0)*(x1 - x0) + (y1 - y0)*(y1 - y0));
 }
 
-int prevOpponentX = 0, prevOpponentY = 0;
-int prevX = 0, prevY = 0;
+
+inline
+float length(const Vec2& v) {
+    return std::sqrt( dot_product(v,v) );
+}
+Vec2 normalize(const Vec2& v) {
+    return v / length(v);
+}
+
+inline
+Vec2 rotate(const Vec2& v, float angle) {
+    float radian = angle * PI / 180;
+    double sinAngle = sin(radian);
+    double cosAngle = cos(radian);
+
+    return Vec2(v.x * cosAngle - v.y * sinAngle, v.y * cosAngle + v.x * sinAngle);
+}
 
 int main()
 {
+    const int kAngleToSteer = 1;
+    const int kSlowingAngle = 90;
+    const float kSlowingRadius = 600 * 4;
 
     // game loop
     while (1) {
@@ -83,94 +117,36 @@ int main()
         int opponentX;
         int opponentY;
         cin >> opponentX >> opponentY; cin.ignore();
-        int thrust = 0;
+        int thrust = 100;
 
-        int opponentDistance = distance(x, y, opponentX, opponentY);
-        Vec2 player(x - prevX, y - prevY);
-        Vec2 enemy(opponentX - prevOpponentX, opponentY - prevOpponentX);
-        float dot = dot_product(normalize(player),normalize(enemy));
-        
-        cerr << "Current dot is " << dot << endl;
-        cerr << "angle is " << abs((float)nextCheckpointAngle/90.f) << endl;
-        cerr << "distance to opponent" << opponentDistance << endl;
+        if(nextCheckpointAngle <= -kAngleToSteer || nextCheckpointAngle >= kAngleToSteer)
+        {
+            Vec2 desiredDir = normalize(Vec2(nextCheckpointX - x, nextCheckpointY - y));
+            Vec2 currentDir = normalize(rotate(desiredDir, -nextCheckpointAngle));
+            Vec2 steeringDirection = normalize(desiredDir - currentDir) * 100.0f;
 
-        // Write an action using cout. DON'T FORGET THE "<< endl"
-        // To debug: cerr << "Debug messages..." << endl;
+            nextCheckpointX += steeringDirection.x;
+            nextCheckpointY += steeringDirection.y;
 
-        Vec2 center(map_width/2, map_height/2);
-
-        Vec2 checkpointToCenterNorm = normalize(Vec2(x - nextCheckpointX, y - nextCheckpointY));
-        checkpointToCenterNorm *= 1200;
-        checkpointToCenterNorm.x += nextCheckpointX;
-        checkpointToCenterNorm.y += nextCheckpointY;
-
-        float fnextCheckpointDist = distance(x, y, checkpointToCenterNorm.x, checkpointToCenterNorm.y);
-        cerr << "Distance " << nextCheckpointDist << endl;
-        cerr << "Distance " << fnextCheckpointDist << endl;
-
-        thrust = 100;
-        float ftrhust = thrust;
-
-        /*{
-            if (nextCheckpointDist < 1500 && abs(dot) < 0.1f && opponentDistance < 1000)
+            // thrust dumping
+            if( nextCheckpointAngle <= -kSlowingAngle || nextCheckpointAngle >= kSlowingAngle )
             {
-                float percentage = (float)nextCheckpointDist / 2500.f;
-                ftrhust *= clamp(0.3f, 1.f, percentage*percentage, [](float x, float y){ return x > y; });
+                thrust = 0;
             }
-        }*/
-
-        //if (nextCheckpointDist < 5000 && abs(nextCheckpointAngle) > 90)
-        {            
-            float value = abs((float)nextCheckpointAngle/90.f);
-            //cerr << "angle is " << value;
-            float torgue = abs(clamp(0.25f, 1.0f, 1-(value*value), [](float x, float y){ return x > y; }));
-            //cerr << "torgue " << torgue;
-            ftrhust *= torgue;
+            else if(nextCheckpointDist < kSlowingRadius)
+            {
+                thrust *= (kSlowingAngle - abs(nextCheckpointAngle)) / (float)kSlowingAngle;
+            }
         }
-
-        {
-            //ftrhust *= opponentDistance > 1500 ? 1.0f : 0.25f;
-        }
-
-        //thrust *= nextCheckpointAngle > 90 || nextCheckpointAngle < -90 ? 0 : 1;
-
-        //thrust = nextCheckpointDist > 1000 ? 100 : (nextCheckpointDist > 500 ? 60 : (nextCheckpointDist > 300 ? 25 : 10));
-        //thrust *= nextCheckpointAngle > 90 || nextCheckpointAngle < -90 ? 0 : 1;
-
-        // You have to output the target position
-        // followed by the power (0 <= thrust <= 100)
-        // i.e.: "x y thrust"
-        /*if ((nextCheckpointAngle < 5 && nextCheckpointAngle > -5) && nextCheckpointDist > 3000)
-        {
-            cout << nextCheckpointX << " " << nextCheckpointY << " BOOST" << endl;
-        }
-        else*/
         
-        /*cerr << "Opponent distance " << opponentDistance << endl;
-        if (opponentDistance < 1500 && opponentDistance > 1000)
+        cout << nextCheckpointX << " " << nextCheckpointY << " ";
+        if( false )
         {
-            cout << opponentX << " " << opponentY << " 100" << endl;
-        }
-        else if (opponentDistance < 1000)
-        {
-            cout << opponentX << " " << opponentY << " BOOST" << endl;
-        }*/if (nextCheckpointAngle == 0 && nextCheckpointDist > 1000)
-        {
-            cerr << "boosted" << endl;
-            cout << round(checkpointToCenterNorm.x) << " " << round(checkpointToCenterNorm.y) << " BOOST" << endl;
+            cout << "BOOST" << endl;
         }
         else
         {
-
-            cerr << "TARGET :" << nextCheckpointX << " " << nextCheckpointY << endl;
-            cerr << "Corrected TARGET :" << checkpointToCenterNorm.x << " " << checkpointToCenterNorm.y << endl;
-
-            cout << round(checkpointToCenterNorm.x) << " " << round(checkpointToCenterNorm.y) << " " << round(ftrhust) << endl;
+            cout << thrust << endl;
         }
-
-        prevOpponentX = opponentX;
-        prevOpponentY = opponentY;
-        prevX = x;
-        prevY = y;
     }
 }
