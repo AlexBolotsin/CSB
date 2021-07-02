@@ -4,10 +4,6 @@
 #include <algorithm>
 #include <cmath>
 
-#define PI 3.14159265
-const int map_width = 16000;
-const int map_height = 9000;
-
 using namespace std;
 
 /**
@@ -56,48 +52,87 @@ struct Vec2
         return *this * r;
     }
 
+    bool operator==(const Vec2& v) const
+    { return (x == v.x) && ( y == v.y ); }
+
+    bool operator!=(const Vec2& v) const
+    { return (x != v.x) || (y != v.y); }
+
+    float X() const
+    { return x; }
+
+    float Y() const
+    { return y; }
+
+private:
     float x = 0;
     float y = 0;
 };
 
-Vec2 normalize(Vec2& vec)
-{
-    float length = sqrt(vec.x*vec.x+vec.y*vec.y);
-    return { vec.x/length, vec.y/length };
+inline
+float dot_product(const Vec2& v1, const Vec2& v2) {
+   return v1.X() * v2.X() + v1.Y() * v2.Y();
 }
-
-Vec2 normalize(Vec2&& vec)
-{
-    float length = sqrt(vec.x*vec.x+vec.y*vec.y);
-    return { vec.x/length, vec.y/length };
-}
-
-float dot_product(const Vec2& player, const Vec2& enemy) {
-   return player.x * enemy.x + player.y* enemy.y;
-}
-
-int distance(int x0, int y0, int x1, int y1)
-{
-    return sqrt((x1 - x0)*(x1 - x0) + (y1 - y0)*(y1 - y0));
-}
-
 
 inline
 float length(const Vec2& v) {
     return std::sqrt( dot_product(v,v) );
 }
+
 Vec2 normalize(const Vec2& v) {
     return v / length(v);
 }
 
 inline
 Vec2 rotate(const Vec2& v, float angle) {
-    float radian = angle * PI / 180;
+    const float PI = 3.14159265f;
+    float radian = angle * PI / 180.f;
     double sinAngle = sin(radian);
     double cosAngle = cos(radian);
 
-    return Vec2(v.x * cosAngle - v.y * sinAngle, v.y * cosAngle + v.x * sinAngle);
+    return Vec2(v.X() * cosAngle - v.Y() * sinAngle, v.Y() * cosAngle + v.X() * sinAngle);
 }
+
+struct Booster {
+    void AddCheckpoint(const int x, const  int y, const int dist) {
+        if(_pathComplete)
+        {
+            return;
+        }
+
+        const Vec2 newCheckpoint(x, y);
+        if(checkpoints_.size() && checkpoints_.front() == newCheckpoint)
+        {
+            _pathComplete = true;
+            return;
+        }
+
+        checkpoints_.push_back(newCheckpoint);
+
+        if(_farthestDist < dist)
+        {
+            _farthestDist = dist;
+        }
+    }
+
+    bool TryBoost(const float dist) {
+        if(_boostAvailable && _pathComplete &&
+            dist + kDistError > _farthestDist)
+        {
+            _boostAvailable = false;
+            return true;
+        }
+
+        return false;
+    }
+
+private:
+    const float kDistError = 2000;
+    bool _boostAvailable = true;
+    bool _pathComplete = false;
+    float _farthestDist = 0.0;
+    vector< Vec2 > checkpoints_;
+};
 
 int main()
 {
@@ -105,6 +140,7 @@ int main()
     const int kSlowingAngle = 90;
     const float kSlowingRadius = 600 * 4;
 
+    Booster booster;
     // game loop
     while (1) {
         int x;
@@ -119,14 +155,18 @@ int main()
         cin >> opponentX >> opponentY; cin.ignore();
         int thrust = 100;
 
+        booster.AddCheckpoint(nextCheckpointX, nextCheckpointY, nextCheckpointDist);
+
+        bool useBoost = false;
+
         if(nextCheckpointAngle <= -kAngleToSteer || nextCheckpointAngle >= kAngleToSteer)
         {
             Vec2 desiredDir = normalize(Vec2(nextCheckpointX - x, nextCheckpointY - y));
             Vec2 currentDir = normalize(rotate(desiredDir, -nextCheckpointAngle));
             Vec2 steeringDirection = normalize(desiredDir - currentDir) * 100.0f;
 
-            nextCheckpointX += steeringDirection.x;
-            nextCheckpointY += steeringDirection.y;
+            nextCheckpointX += steeringDirection.X();
+            nextCheckpointY += steeringDirection.Y();
 
             // thrust dumping
             if( nextCheckpointAngle <= -kSlowingAngle || nextCheckpointAngle >= kSlowingAngle )
@@ -137,10 +177,20 @@ int main()
             {
                 thrust *= (kSlowingAngle - abs(nextCheckpointAngle)) / (float)kSlowingAngle;
             }
+        } else {
+            if(booster.TryBoost(nextCheckpointDist))
+            {
+                useBoost = true;
+            }
+            else if(nextCheckpointDist < kSlowingRadius)
+            {
+                thrust *= nextCheckpointDist / kSlowingRadius;
+            }
         }
         
+        // output
         cout << nextCheckpointX << " " << nextCheckpointY << " ";
-        if( false )
+        if(useBoost)
         {
             cout << "BOOST" << endl;
         }
